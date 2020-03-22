@@ -202,14 +202,14 @@ namespace EyeAssistant
                 GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
                 int offset;
-                int offset_x;
+                int offset_index;
                 GL.Begin(PrimitiveType.Quads);
                 for (int x = 0; x < Width - 1; x++)
                 {
-                    offset_x = Width * Height * index;
+                    offset_index = Width * Height * index;
                     for (int y = 0; y < Height - 1; y++)
                     {
-                        offset = offset_x + Width * y + x;
+                        offset = offset_index + Width * y + x;
                         GL.Color3(TColor(mData[offset]));
                         GL.Vertex2(x, y);
 
@@ -239,11 +239,12 @@ namespace EyeAssistant
                 GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
                 int offset;
-                
+                int offset_index;
                 for (int x = 0; x < Width - 1; x++)
                 {
+                    offset_index = Width * Height * index;
                     GL.Begin(PrimitiveType.QuadStrip);
-                    offset = Width * Height * index + Width * 0 + x;
+                    offset = offset_index + x;
                     GL.Color3(TColor(mData[offset]));
                     GL.Vertex2(x, 0);
 
@@ -253,15 +254,15 @@ namespace EyeAssistant
 
                     offset += Width;
                     GL.Color3(TColor(mData[offset]));
-                    GL.Vertex2(x + 1, 0 + 1);
+                    GL.Vertex2(x + 1, 1);
 
                     offset += -1;
                     GL.Color3(TColor(mData[offset]));
-                    GL.Vertex2(x, 0 + 1);
+                    GL.Vertex2(x, 1);
 
                     for (int y = 1; y < Height - 1; y++)
                     {
-                        offset = Width * Height * index + Width * y + x;
+                        offset = offset_index + Width * y + x;
                         GL.Color3(TColor(mData[offset]));
                         GL.Vertex2(x, y);
 
@@ -273,5 +274,6 @@ namespace EyeAssistant
                 }
             }
         }
+
     }
 }

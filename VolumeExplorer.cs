@@ -275,5 +275,12 @@ namespace EyeAssistant
             }
         }
 
+        public void DrawTexture()
+        {
+            if (ErrorInfo())
+            {
+                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            }
+        }
     }
 }

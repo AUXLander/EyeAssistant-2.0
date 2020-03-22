@@ -8,6 +8,13 @@ using System.Windows.Forms;
 using OpenTK;
 using OpenTK.Graphics.OpenGL;
 
+
+static class Globals
+{
+    public static GLControl[] GLView;
+    public static EyeAssistant.VolumeExplorer[] Explorer;
+}
+
 namespace EyeAssistant
 {
     static class Program

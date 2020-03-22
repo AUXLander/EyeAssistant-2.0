@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.Drawing;
+using System.Drawing.Imaging;
 using OpenTK.Graphics.OpenGL;
 using System.Windows.Forms;
 using System.Threading.Tasks;
@@ -42,7 +43,11 @@ namespace EyeAssistant
         private STATUS Status = STATUS.NotInitialized;
 
         private string _filepath;
-        private bool DrawMode;
+        private byte DrawMode;
+
+        private Bitmap texture;
+        private int VBOtexture;
+        private int LoadedLayerIndex = -1;
 
         public VolumeExplorer(int ViewWidth = 800, int ViewHeight = 600)
         {
@@ -50,6 +55,8 @@ namespace EyeAssistant
             VHeight = ViewHeight;
             InitView(VWidth, VHeight);
         }
+
+
         public VolumeExplorer(string filepath, int ViewWidth = 800, int ViewHeight = 600)
         {
             VWidth = ViewWidth;
@@ -57,6 +64,7 @@ namespace EyeAssistant
             LoadBinary(filepath);
             InitView(VWidth, VHeight);
         }
+
 
         public bool ErrorInfo(STATUS ST = STATUS.OK)
         {
@@ -98,6 +106,7 @@ namespace EyeAssistant
             }
             return false;
         }
+
 
         public void LoadBinary(string filepath)
         {
@@ -187,11 +196,13 @@ namespace EyeAssistant
             GL.Viewport(0, 0, VWidth, VHeight);
         }
 
+
         public Color TColor(short value)
         {
             byte channel = Math.Max((byte)0, (byte)Math.Min((int)255, (int)((value - Min) * ColorStep)));
             return Color.FromArgb(255, channel, channel, channel);
         }
+
 
         //FPS = ~40
         public void DrawQuads(int index)
@@ -229,6 +240,7 @@ namespace EyeAssistant
                 GL.End();
             }
         }
+
 
         //FPS = ~70
         public void DrawQuadStrip(int index)
@@ -275,12 +287,99 @@ namespace EyeAssistant
             }
         }
 
-        public void DrawTexture()
+
+        private void Load2DTexture()
+        {
+            GL.BindTexture(TextureTarget.Texture2D, VBOtexture);
+
+            BitmapData data = texture.LockBits(new Rectangle(0, 0, texture.Width, texture.Height),
+                                               ImageLockMode.ReadOnly,
+                                               System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+            GL.TexImage2D(
+                TextureTarget.Texture2D,
+                0,
+                PixelInternalFormat.Rgba,
+                data.Width,
+                data.Height,
+                0,
+                OpenTK.Graphics.OpenGL.PixelFormat.Bgra,
+                PixelType.UnsignedByte,
+                data.Scan0
+            );
+
+            texture.UnlockBits(data);
+
+            GL.TexParameter(
+                TextureTarget.Texture2D,
+                TextureParameterName.TextureMinFilter,
+                (int)TextureMinFilter.Linear
+            );
+
+            GL.TexParameter(
+                TextureTarget.Texture2D,
+                TextureParameterName.TextureMagFilter,
+                (int)TextureMagFilter.Linear
+            );
+
+            ErrorCode e = GL.GetError();
+            string str = e.ToString();
+        }
+
+
+        public void RenderFrame(int index)
+        {
+            int offset;
+            int offset_index;
+            texture = new Bitmap(Width, Height);
+            for(int i = 0; i < Width - 1; i++)
+            {
+                offset_index = Width * Height * index;
+                for (int j = 0; j < Height -1; j++)
+                {
+                    offset = offset_index + j * Width + i;
+                    texture.SetPixel(i, j, TColor(mData[offset]));
+                }
+            }
+        }
+
+        //FPS = ~900
+        public void DrawTexture(int index)
         {
             if (ErrorInfo())
             {
+                if(LoadedLayerIndex != index)
+                {
+                    RenderFrame(index);
+                    Load2DTexture();
+                    LoadedLayerIndex = index;
+                }
+                
                 GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                
+                GL.Enable(EnableCap.Texture2D);
+                GL.BindTexture(TextureTarget.Texture2D, VBOtexture);
+                GL.Begin(PrimitiveType.Quads);
+                GL.Color3(Color.White);
+                GL.TexCoord2(0f, 0f);
+                GL.Vertex2(0, 0);
+
+                GL.TexCoord2(0f, 1f);
+                GL.Vertex2(0, Height);
+
+
+                GL.TexCoord2(1f, 1f);
+                GL.Vertex2(Width, Height);
+
+
+                GL.TexCoord2(1f, 0f);
+                GL.Vertex2(Width, 0);
+
+                GL.End();
+
+                GL.Disable(EnableCap.Texture2D);
             }
         }
+
     }
 }

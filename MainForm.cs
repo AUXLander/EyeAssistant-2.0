@@ -62,7 +62,7 @@ namespace EyeAssistant
         {
             GLViewLeft.MakeCurrent();
             Globals.Explorer[0].InitView(Globals.GLView[0].Width, Globals.GLView[0].Height);
-            Globals.Explorer[0].DrawQuadStrip(trackBar1.Value);
+            Globals.Explorer[0].DrawTexture(trackBar1.Value);
             GLViewLeft.SwapBuffers();
         }
 
@@ -76,7 +76,7 @@ namespace EyeAssistant
         {
             GLViewRight.MakeCurrent();
             Globals.Explorer[1].InitView(Globals.GLView[1].Width, Globals.GLView[1].Height);
-            Globals.Explorer[1].DrawQuadStrip(trackBar1.Value);
+            Globals.Explorer[1].DrawTexture(trackBar1.Value);
             GLViewRight.SwapBuffers();
         }
     }

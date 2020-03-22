@@ -193,6 +193,7 @@ namespace EyeAssistant
             return Color.FromArgb(255, channel, channel, channel);
         }
 
+        //FPS = ~40
         public void DrawQuads(int index)
         {
             if (ErrorInfo()) {
@@ -200,10 +201,9 @@ namespace EyeAssistant
 
                 GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-                GL.Begin(PrimitiveType.Quads);
-
                 int offset;
                 int offset_x;
+                GL.Begin(PrimitiveType.Quads);
                 for (int x = 0; x < Width - 1; x++)
                 {
                     offset_x = Width * Height * index;
@@ -217,19 +217,61 @@ namespace EyeAssistant
                         GL.Color3(TColor(mData[offset]));
                         GL.Vertex2(x + 1, y);
 
-                        offset += Width - 1;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x, y + 1);
-
-                        offset += 1;
+                        offset += Width;
                         GL.Color3(TColor(mData[offset]));
                         GL.Vertex2(x + 1, y + 1);
+
+                        offset += -1;
+                        GL.Color3(TColor(mData[offset]));
+                        GL.Vertex2(x, y + 1);
                     }
                 }
-
                 GL.End();
             }
         }
 
+        //FPS = ~70
+        public void DrawQuadStrip(int index)
+        {
+            if (ErrorInfo())
+            {
+                index = Math.Max(0, Math.Min(Depth - 1, index));
+                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+                int offset;
+                
+                for (int x = 0; x < Width - 1; x++)
+                {
+                    GL.Begin(PrimitiveType.QuadStrip);
+                    offset = Width * Height * index + Width * 0 + x;
+                    GL.Color3(TColor(mData[offset]));
+                    GL.Vertex2(x, 0);
+
+                    offset += 1;
+                    GL.Color3(TColor(mData[offset]));
+                    GL.Vertex2(x + 1, 0);
+
+                    offset += Width;
+                    GL.Color3(TColor(mData[offset]));
+                    GL.Vertex2(x + 1, 0 + 1);
+
+                    offset += -1;
+                    GL.Color3(TColor(mData[offset]));
+                    GL.Vertex2(x, 0 + 1);
+
+                    for (int y = 1; y < Height - 1; y++)
+                    {
+                        offset = Width * Height * index + Width * y + x;
+                        GL.Color3(TColor(mData[offset]));
+                        GL.Vertex2(x, y);
+
+                        offset += 1;
+                        GL.Color3(TColor(mData[offset]));
+                        GL.Vertex2(x + 1, y);
+                    }
+                    GL.End();
+                }
+            }
+        }
     }
 }

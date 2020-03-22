@@ -62,22 +62,24 @@ namespace EyeAssistant
         {
             GLViewLeft.MakeCurrent();
             Globals.Explorer[0].InitView(Globals.GLView[0].Width, Globals.GLView[0].Height);
-            Globals.Explorer[0].DrawTexture(trackBar1.Value);
+            Globals.Explorer[0].SetDrawMode(VolumeExplorer.DRAWMODE.Texture);
+            Globals.Explorer[0].Explore(trackBar1.Value);
             GLViewLeft.SwapBuffers();
-        }
-
-        private void trackBar1_Scroll(object sender, EventArgs e)
-        {
-            GLViewLeft.Invalidate();
-            GLViewRight.Invalidate();
         }
 
         private void GLViewRight_Paint(object sender, PaintEventArgs e)
         {
             GLViewRight.MakeCurrent();
             Globals.Explorer[1].InitView(Globals.GLView[1].Width, Globals.GLView[1].Height);
-            Globals.Explorer[1].DrawTexture(trackBar1.Value);
+            Globals.Explorer[1].SetDrawMode(VolumeExplorer.DRAWMODE.Texture);
+            Globals.Explorer[1].Explore(trackBar1.Value);
             GLViewRight.SwapBuffers();
+        }
+
+        private void trackBar1_Scroll(object sender, EventArgs e)
+        {
+            GLViewLeft.Invalidate();
+            GLViewRight.Invalidate();
         }
     }
 }

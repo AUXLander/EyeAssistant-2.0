@@ -15,11 +15,21 @@ namespace EyeAssistant
     {
         public enum STATUS
         {
+            DrawModeNotInitialized = -5,
+            DrawModeFailed = -4,
             BadFile = -3,
             CannotRead = -2,
             BadPath = -1,
             NotInitialized = 0,
             OK = 1,
+        }
+
+        public enum DRAWMODE
+        {
+            Texture = 0,
+            Quads = 1,
+            QuadStrip = 2,
+            NotInitialized = -1
         }
 
         public int Depth;
@@ -43,7 +53,7 @@ namespace EyeAssistant
         private STATUS Status = STATUS.NotInitialized;
 
         private string _filepath;
-        private byte DrawMode;
+        private DRAWMODE DrawMode = DRAWMODE.NotInitialized;
 
         private Bitmap texture;
         private int VBOtexture;
@@ -98,11 +108,31 @@ namespace EyeAssistant
                         MessageBox.Show("File hasn't been uploaded.");
                     };
                     break;
+                case STATUS.DrawModeFailed:
+                    {
+                        MessageBox.Show("Cannot set unknown DrawMode.");
+                    }
+                    break;
+                case STATUS.DrawModeNotInitialized:
+                    {
+                        MessageBox.Show("Draw Mode is not initialized.");
+                    }
+                    break;
                 default:
                     {
-                        MessageBox.Show("Unknown error");
+                        MessageBox.Show("Unknown error.");
                     };
                     break;
+            }
+            return false;
+        }
+
+        private bool SetStatus(STATUS state)
+        {
+            if(ErrorInfo())
+            {
+                Status = state;
+                return ErrorInfo();
             }
             return false;
         }
@@ -160,32 +190,29 @@ namespace EyeAssistant
                         }
                         else
                         {
-                            Status = STATUS.BadFile;
-                            ErrorInfo();
+                            SetStatus(STATUS.BadFile);
                         }
 
                         Reader.Close();
                     }
                     else
                     {
-                        Status = STATUS.BadFile;
-                        ErrorInfo();
+                        SetStatus(STATUS.BadFile);
                     }
                 }
                 else
                 {
-                    Status = STATUS.CannotRead;
-                    ErrorInfo();
+                    SetStatus(STATUS.CannotRead);
                 }
 
                 Stream.Close();
             }
             else
             {
-                Status = STATUS.BadPath;
-                ErrorInfo();
+                SetStatus(STATUS.BadPath);
             }
         }
+
 
         public void InitView(int ViewWidth = 800, int ViewHeight = 600)
         {
@@ -205,7 +232,7 @@ namespace EyeAssistant
 
 
         //FPS = ~40
-        public void DrawQuads(int index)
+        private void DrawQuads(int index)
         {
             if (ErrorInfo()) {
                 index = Math.Max(0, Math.Min(Depth - 1, index));
@@ -243,7 +270,7 @@ namespace EyeAssistant
 
 
         //FPS = ~70
-        public void DrawQuadStrip(int index)
+        private void DrawQuadStrip(int index)
         {
             if (ErrorInfo())
             {
@@ -343,8 +370,9 @@ namespace EyeAssistant
             }
         }
 
+
         //FPS = ~900
-        public void DrawTexture(int index)
+        private void DrawTexture(int index)
         {
             if (ErrorInfo())
             {
@@ -380,6 +408,63 @@ namespace EyeAssistant
                 GL.Disable(EnableCap.Texture2D);
             }
         }
+        
 
+        public void Explore(int index)
+        {
+            SetDrawMode(DrawMode);
+            switch (DrawMode)
+            {
+                case DRAWMODE.Texture:
+                    {
+                        DrawTexture(index);
+                    };
+                    break;
+                case DRAWMODE.Quads:
+                    {
+                        DrawQuads(index);
+                    };
+                    break;
+                case DRAWMODE.QuadStrip:
+                    {
+                        DrawQuadStrip(index);
+                    };
+                    break;
+            }
+        }
+
+
+        public bool SetDrawMode(DRAWMODE Mode)
+        {
+            switch (Mode)
+            {
+                case DRAWMODE.Texture:
+                    {
+                        DrawMode = DRAWMODE.Texture;
+                    };
+                    break;
+                case DRAWMODE.Quads:
+                    {
+                        DrawMode = DRAWMODE.Quads;
+                    };
+                    break;
+                case DRAWMODE.QuadStrip:
+                    {
+                        DrawMode = DRAWMODE.QuadStrip;
+                    };
+                    break;
+                case DRAWMODE.NotInitialized:
+                    {
+                        return SetStatus(STATUS.DrawModeNotInitialized);
+                    };
+                break;
+                default:
+                    {
+                        return SetStatus(STATUS.DrawModeFailed);
+                    };
+            }
+
+            return SetStatus(STATUS.OK);
+        }
     }
 }

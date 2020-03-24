@@ -13,13 +13,14 @@ namespace EyeAssistant
 {
     public partial class MainForm : Form
     {
-        int FrameCount;
+        long FrameCount;
         DateTime NextFPSUpdate = DateTime.Now.AddSeconds(1);
         private void ApplicationIdle(object sender, EventArgs e)
         {
             while (GLViewRight.IsIdle || GLViewLeft.IsIdle)
             {
                 displayFPS();
+
                 GLViewRight.Invalidate();
                 GLViewLeft.Invalidate();
             }
@@ -33,6 +34,7 @@ namespace EyeAssistant
                 NextFPSUpdate = DateTime.Now.AddSeconds(1);
                 FrameCount = 0;
             }
+
             FrameCount++;
         }
 
@@ -155,6 +157,9 @@ namespace EyeAssistant
 
                 loadData();
             }
+
+            fileRequest[0].Dispose();
+            fileRequest[1].Dispose();
         }
 
         private void openLeft(object sender, EventArgs e)
@@ -171,6 +176,8 @@ namespace EyeAssistant
                     loadData();
                 }
             }
+
+            fileRequest.Dispose();
         }
 
         private void openRight(object sender, EventArgs e)
@@ -187,6 +194,8 @@ namespace EyeAssistant
                     loadData();
                 }
             }
+
+            fileRequest.Dispose();
         }
 
         private void loadData()

@@ -39,10 +39,11 @@ namespace EyeAssistant
         private int VWidth;
         private int VHeight;
 
-        private int Length;
-
         private short Min;
         private short Max;
+
+        public short OutputMin;
+        public short OutputMax;
 
         private int XScale;
         private int YScale;
@@ -51,6 +52,7 @@ namespace EyeAssistant
         private short[] mData;
         private double ColorStep;
         private STATUS Status = STATUS.NotInitialized;
+        private bool hasDisplayedStatus = false;
 
         private string _filepath;
         private DRAWMODE DrawMode = DRAWMODE.NotInitialized;
@@ -78,59 +80,56 @@ namespace EyeAssistant
 
         public bool ErrorInfo(STATUS ST = STATUS.OK)
         {
-            if(ST == STATUS.OK)
+            ST = ST == STATUS.OK ? Status : ST;
+
+            if (!hasDisplayedStatus)
             {
-                ST = Status;
-            }
-            switch (ST)
-            {
-                case STATUS.OK:
-                    {
-                        return true;
-                    };
-                case STATUS.BadFile:
-                    {
-                        MessageBox.Show("File's binary length is too short. File's target is missing or file has been damaged.");
-                    };
-                    break;
-                case STATUS.BadPath:
-                    {
-                        MessageBox.Show("Cannot find file at \"" + _filepath + '\"');
-                    };
-                    break;
-                case STATUS.CannotRead:
-                    {
-                        MessageBox.Show("File has been corrupted. Cannot read file at \"" + _filepath + '\"');
-                    };
-                    break;
-                case STATUS.NotInitialized:
-                    {
-                        MessageBox.Show("File hasn't been uploaded.");
-                    };
-                    break;
-                case STATUS.DrawModeFailed:
-                    {
-                        MessageBox.Show("Cannot set unknown DrawMode.");
-                    }
-                    break;
-                case STATUS.DrawModeNotInitialized:
-                    {
-                        MessageBox.Show("Draw Mode is not initialized.");
-                    }
-                    break;
-                default:
-                    {
-                        MessageBox.Show("Unknown error.");
-                    };
-                    break;
-            }
-            return false;
+                switch (ST)
+                {
+                    case STATUS.BadFile:
+                        {
+                            MessageBox.Show("File's binary length is too short. File's target is missing or file has been damaged.");
+                        };
+                        break;
+                    case STATUS.BadPath:
+                        {
+                            MessageBox.Show("Cannot find file at \"" + _filepath + '\"');
+                        };
+                        break;
+                    case STATUS.CannotRead:
+                        {
+                            MessageBox.Show("File has been corrupted. Cannot read file at \"" + _filepath + '\"');
+                        };
+                        break;
+                    case STATUS.NotInitialized:
+                        {
+                            MessageBox.Show("File hasn't been uploaded.");
+                        };
+                        break;
+                    case STATUS.DrawModeFailed:
+                        {
+                            MessageBox.Show("Cannot set unknown DrawMode.");
+                        }
+                        break;
+                    case STATUS.DrawModeNotInitialized:
+                        {
+                            MessageBox.Show("Draw Mode is not initialized.");
+                        }
+                        break;
+                }
+
+                hasDisplayedStatus = true;
+            }   
+
+            return ST == STATUS.OK;
         }
+
 
         private bool SetStatus(STATUS state)
         {
             if(ErrorInfo())
             {
+                hasDisplayedStatus = Status == state;
                 Status = state;
                 return ErrorInfo();
             }
@@ -138,9 +137,13 @@ namespace EyeAssistant
         }
 
 
-        public void LoadBinary(string filepath)
+        public bool LoadBinary(string filepath)
         {
             _filepath = filepath;
+
+            Status = STATUS.OK;
+            hasDisplayedStatus = false;
+
             if (File.Exists(filepath))
             {
                 FileStream Stream = File.Open(filepath, FileMode.Open);
@@ -159,34 +162,31 @@ namespace EyeAssistant
 
                         int length = Width * Height * Depth;
                         
-                        if (Stream.Length > 3 * 4 + length * 2)
+                        if (Stream.Length == 6 * 4 + length * 2)
                         {
                             mData = new short[length];
                             
                             mData[0] = Reader.ReadInt16();
 
-                            short min = mData[0];
-                            short max = mData[0];
+                            Min = mData[0];
+                            Max = mData[0];
 
                             for (int i = 1; i < length; i++)
                             {
                                 mData[i] = Reader.ReadInt16();
-                                if(mData[i] < min)
-                                {
-                                    min = mData[i];
-                                }
-                                if(mData[i] > max)
-                                {
-                                    max = mData[i];
-                                }
+
+                                Min = mData[i] < Min ? mData[i] : Min;
+                                Max = mData[i] > Max ? mData[i] : Max;
                             }
 
-                            Min = min;
-                            Max = max;
+                            OutputMin = Min;
+                            OutputMax = Max;
 
-                            ColorStep = 255.0 / (max - min);
+                            ColorStep = 255.0 / (Max - Min);
 
                             Status = STATUS.OK;
+
+                            return true;
                         }
                         else
                         {
@@ -211,6 +211,13 @@ namespace EyeAssistant
             {
                 SetStatus(STATUS.BadPath);
             }
+
+            return false;
+        }
+
+        public (short, short) GetBounds()
+        {
+            return (Min, Max);
         }
 
 
@@ -226,8 +233,15 @@ namespace EyeAssistant
 
         public Color TColor(short value)
         {
-            byte channel = Math.Max((byte)0, (byte)Math.Min((int)255, (int)((value - Min) * ColorStep)));
-            return Color.FromArgb(255, channel, channel, channel);
+            byte color = 0;
+            byte alpha = (Math.Min(OutputMax, Max) < value || value < Math.Max(OutputMin, Min)) ? (byte)0 : (byte)255;
+
+            if (alpha > 0)
+            {
+                color = Math.Max((byte)0, (byte)Math.Min((int)255, (int)((value - Min) * ColorStep)));
+            }
+
+            return Color.FromArgb(alpha, color, color, color);
         }
 
 
@@ -299,6 +313,7 @@ namespace EyeAssistant
                     GL.Color3(TColor(mData[offset]));
                     GL.Vertex2(x, 1);
 
+                    offset += -Width;
                     for (int y = 1; y < Height - 1; y++)
                     {
                         offset = offset_index + Width * y + x;
@@ -409,6 +424,10 @@ namespace EyeAssistant
             }
         }
         
+        public void DropTexture()
+        {
+            LoadedLayerIndex = -1;
+        }
 
         public void Explore(int index)
         {
@@ -457,7 +476,7 @@ namespace EyeAssistant
                     {
                         return SetStatus(STATUS.DrawModeNotInitialized);
                     };
-                break;
+
                 default:
                     {
                         return SetStatus(STATUS.DrawModeFailed);

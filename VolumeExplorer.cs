@@ -314,7 +314,7 @@ namespace EyeAssistant
                     GL.Vertex2(x, 1);
 
                     offset += -Width;
-                    for (int y = 1; y < Height - 1; y++)
+                    for (int y = 1; y < Height; y++)
                     {
                         offset = offset_index + Width * y + x;
                         GL.Color3(TColor(mData[offset]));

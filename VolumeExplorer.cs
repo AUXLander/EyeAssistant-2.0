@@ -13,53 +13,32 @@ namespace EyeAssistant
 {
     class VolumeExplorer
     {
-        public enum STATUS
-        {
-            DrawModeNotInitialized = -5,
-            DrawModeFailed = -4,
-            BadFile = -3,
-            CannotRead = -2,
-            BadPath = -1,
-            NotInitialized = 0,
-            OK = 1,
-        }
+        public int sgn;  // sign
+        public int slope; // slope
+        public int offset;  // offset
 
-        public enum DRAWMODE
-        {
-            Texture = 0,
-            Quads = 1,
-            QuadStrip = 2,
-            NotInitialized = -1
-        }
-
-        public int Depth;
-        private int Width;
-        private int Height;
+        public int height;
+        public int width;
 
         private int VWidth;
         private int VHeight;
 
-        private short Min;
-        private short Max;
+        private ushort Min;
+        private ushort Max;
 
-        public short OutputMin;
-        public short OutputMax;
+        public ushort OutputMin;
+        public ushort OutputMax;
 
-        private int XScale;
-        private int YScale;
-        private int ZScale;
-
-        private short[] mData;
+        private ushort[] mData;
         private double ColorStep;
-        private STATUS Status = STATUS.NotInitialized;
+
         private bool hasDisplayedStatus = false;
 
-        private string _filepath;
-        private DRAWMODE DrawMode = DRAWMODE.NotInitialized;
+        public string filepath;
 
         private Bitmap texture;
         private int VBOtexture;
-        private int LoadedLayerIndex = -1;
+        private long LoadedLayerIndex = -1;
 
         public VolumeExplorer(int ViewWidth = 800, int ViewHeight = 600)
         {
@@ -73,151 +52,81 @@ namespace EyeAssistant
         {
             VWidth = ViewWidth;
             VHeight = ViewHeight;
+
             LoadBinary(filepath);
             InitView(VWidth, VHeight);
         }
 
-
-        public bool ErrorInfo(STATUS ST = STATUS.OK)
+        public bool LoadBinary(string __filepath)
         {
-            ST = ST == STATUS.OK ? Status : ST;
-
-            if (!hasDisplayedStatus)
-            {
-                switch (ST)
-                {
-                    case STATUS.BadFile:
-                        {
-                            MessageBox.Show("File's binary length is too short. File's target is missing or file has been damaged.");
-                        };
-                        break;
-                    case STATUS.BadPath:
-                        {
-                            MessageBox.Show("Cannot find file at \"" + _filepath + '\"');
-                        };
-                        break;
-                    case STATUS.CannotRead:
-                        {
-                            MessageBox.Show("File has been corrupted. Cannot read file at \"" + _filepath + '\"');
-                        };
-                        break;
-                    case STATUS.NotInitialized:
-                        {
-                            MessageBox.Show("File hasn't been uploaded.");
-                        };
-                        break;
-                    case STATUS.DrawModeFailed:
-                        {
-                            MessageBox.Show("Cannot set unknown DrawMode.");
-                        }
-                        break;
-                    case STATUS.DrawModeNotInitialized:
-                        {
-                            MessageBox.Show("Draw Mode is not initialized.");
-                        }
-                        break;
-                }
-
-                hasDisplayedStatus = true;
-            }   
-
-            return ST == STATUS.OK;
-        }
-
-
-        private bool SetStatus(STATUS state)
-        {
-            if(ErrorInfo())
-            {
-                hasDisplayedStatus = Status == state;
-                Status = state;
-                return ErrorInfo();
-            }
-            return false;
-        }
-
-
-        public bool LoadBinary(string filepath)
-        {
-            _filepath = filepath;
-
-            Status = STATUS.OK;
-            hasDisplayedStatus = false;
+            filepath = __filepath;
 
             if (File.Exists(filepath))
             {
-                FileStream Stream = File.Open(filepath, FileMode.Open);
-                if(Stream.CanRead)
+                FileStream stream = File.Open(filepath, FileMode.Open);
+
+                if(stream.CanRead)
                 {
-                    if(Stream.Length > 3*4)
+                    BinaryReader reader = new BinaryReader(stream);
+                    
+                    sgn = reader.ReadUInt16();
+                    slope = reader.ReadUInt16();
+                    offset = reader.ReadUInt16();
+
+                    height = reader.ReadUInt16();
+                    width = reader.ReadUInt16();
+
+                    int length = height * width * (sgn * sgn) * (slope  * slope) * (offset * offset);
+
+                    Min = ushort.MaxValue;
+                    Max = ushort.MinValue;
+
+                    mData = new ushort[length];
+
+                    for (uint i = 0; i < length; i++)
                     {
-                        BinaryReader Reader = new BinaryReader(Stream);
-                        Width = Reader.ReadInt32();
-                        Height = Reader.ReadInt32();
-                        Depth = Reader.ReadInt32();
+                        mData[i] = reader.ReadUInt16();
 
-                        XScale = Reader.ReadInt32();
-                        YScale = Reader.ReadInt32();
-                        ZScale = Reader.ReadInt32();
-
-                        int length = Width * Height * Depth;
-                        
-                        if (Stream.Length == 6 * 4 + length * 2)
-                        {
-                            mData = new short[length];
-                            
-                            mData[0] = Reader.ReadInt16();
-
-                            Min = mData[0];
-                            Max = mData[0];
-
-                            for (int i = 1; i < length; i++)
-                            {
-                                mData[i] = Reader.ReadInt16();
-
-                                Min = mData[i] < Min ? mData[i] : Min;
-                                Max = mData[i] > Max ? mData[i] : Max;
-                            }
-
-                            OutputMin = Min;
-                            OutputMax = Max;
-
-                            ColorStep = 255.0 / (Max - Min);
-
-                            Status = STATUS.OK;
-
-                            return true;
-                        }
-                        else
-                        {
-                            SetStatus(STATUS.BadFile);
-                        }
-
-                        Reader.Close();
+                        Min = mData[i] < Min ? mData[i] : Min;
+                        Max = mData[i] > Max ? mData[i] : Max;
                     }
-                    else
-                    {
-                        SetStatus(STATUS.BadFile);
-                    }
-                }
-                else
-                {
-                    SetStatus(STATUS.CannotRead);
+
+                    OutputMin = Min;
+                    OutputMax = Max;
+
+                    ColorStep = 255.0 / (Max - Min);
+
+                    reader.Close();
+                    stream.Close();
+
+                    return true;
                 }
 
-                Stream.Close();
-            }
-            else
-            {
-                SetStatus(STATUS.BadPath);
+                stream.Close();
             }
 
             return false;
         }
 
-        public (short, short) GetBounds()
+
+        public (ushort, ushort) GetBounds(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
         {
-            return (Min, Max);
+            int loffset = LOffset(sgn_o, slope_o, offset_o, sgn_i, slope_i, offset_i);
+            ushort min = ushort.MaxValue;
+            ushort max = ushort.MinValue;
+
+            for (int xoffset, x = 0; x < width; x++)
+            {
+                xoffset = loffset + x * height;
+
+                for (int y = 0; y < height; y++)
+                {
+                    min = Math.Min(min, mData[xoffset + y]);
+                    max = Math.Max(max, mData[xoffset + y]);
+                }
+            }
+
+            return (min, max);
         }
 
 
@@ -226,12 +135,12 @@ namespace EyeAssistant
             GL.ShadeModel(ShadingModel.Smooth);
             GL.MatrixMode(MatrixMode.Projection);
             GL.LoadIdentity();
-            GL.Ortho(0, Width, 0, Height, -1, 1);
+            GL.Ortho(0, height, 0, width, -1, 1);
             GL.Viewport(0, 0, VWidth, VHeight);
         }
 
 
-        public Color TColor(short value)
+        public Color TColor(ushort value)
         {
             byte color = 0;
             byte alpha = (Math.Min(OutputMax, Max) < value || value < Math.Max(OutputMin, Min)) ? (byte)0 : (byte)255;
@@ -242,91 +151,6 @@ namespace EyeAssistant
             }
 
             return Color.FromArgb(alpha, color, color, color);
-        }
-
-
-        //FPS = ~40
-        private void DrawQuads(int index)
-        {
-            if (ErrorInfo()) {
-                index = Math.Max(0, Math.Min(Depth - 1, index));
-
-                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
-                int offset;
-                int offset_index;
-                GL.Begin(PrimitiveType.Quads);
-                for (int x = 0; x < Width - 1; x++)
-                {
-                    offset_index = Width * Height * index;
-                    for (int y = 0; y < Height - 1; y++)
-                    {
-                        offset = offset_index + Width * y + x;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x, y);
-
-                        offset += 1;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x + 1, y);
-
-                        offset += Width;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x + 1, y + 1);
-
-                        offset += -1;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x, y + 1);
-                    }
-                }
-                GL.End();
-            }
-        }
-
-
-        //FPS = ~70
-        private void DrawQuadStrip(int index)
-        {
-            if (ErrorInfo())
-            {
-                index = Math.Max(0, Math.Min(Depth - 1, index));
-                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
-                int offset;
-                int offset_index;
-                for (int x = 0; x < Width - 1; x++)
-                {
-                    offset_index = Width * Height * index;
-                    GL.Begin(PrimitiveType.QuadStrip);
-                    offset = offset_index + x;
-                    GL.Color3(TColor(mData[offset]));
-                    GL.Vertex2(x, 0);
-
-                    offset += 1;
-                    GL.Color3(TColor(mData[offset]));
-                    GL.Vertex2(x + 1, 0);
-
-                    offset += Width;
-                    GL.Color3(TColor(mData[offset]));
-                    GL.Vertex2(x + 1, 1);
-
-                    offset += -1;
-                    GL.Color3(TColor(mData[offset]));
-                    GL.Vertex2(x, 1);
-
-                    offset += -Width;
-                    for (int y = 1; y < Height; y++)
-                    {
-                        offset = offset_index + Width * y + x;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x, y);
-
-                        offset += 1;
-                        GL.Color3(TColor(mData[offset]));
-                        GL.Vertex2(x + 1, y);
-                    }
-                    GL.End();
-                }
-            }
         }
 
 
@@ -369,121 +193,88 @@ namespace EyeAssistant
         }
 
 
-        public void RenderFrame(int index)
+        public int LOffset(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
         {
-            int offset;
-            int offset_index;
-            texture = new Bitmap(Width, Height);
-            for(int i = 0; i < Width - 1; i++)
+            return sgn_o        * ((sgn) * (slope * slope) * (offset * offset) * height * width)
+                   + slope_o    * (sgn * slope * (offset * offset) * height * width)
+                   + offset_o   * (sgn * slope * offset * height * width)
+                   + sgn_i      * (slope * offset * height * width)
+                   + slope_i    * (offset * height * width)
+                   + offset_i   * (height * width);
+        }
+
+
+        public void RenderFrame(int loffset)
+        {
+            Bitmap original = new Bitmap(width, height);
+
+            for (int xoffset, x = 0; x < width; x++)
             {
-                offset_index = Width * Height * index;
-                for (int j = 0; j < Height -1; j++)
+                xoffset = loffset + x * height;
+
+                for (int y = 0; y < height; y++)
                 {
-                    offset = offset_index + j * Width + i;
-                    texture.SetPixel(i, j, TColor(mData[offset]));
+                    original.SetPixel(x, y, TColor(mData[xoffset + y]));
                 }
             }
+
+            if (texture != null)
+            {
+                texture.Dispose();
+            }
+
+            texture = new Bitmap(original, new Size(VWidth, VHeight));
+            original.Dispose();
         }
 
 
         //FPS = ~900
-        private void DrawTexture(int index)
+        private void DrawTexture(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
         {
-            if (ErrorInfo())
+            int loffset = LOffset(sgn_o, slope_o, offset_o, sgn_i, slope_i, offset_i);
+
+            if (LoadedLayerIndex != loffset)
             {
-                if(LoadedLayerIndex != index)
-                {
-                    RenderFrame(index);
-                    Load2DTexture();
-                    LoadedLayerIndex = index;
-                }
-                
-                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-                
-                GL.Enable(EnableCap.Texture2D);
-                GL.BindTexture(TextureTarget.Texture2D, VBOtexture);
-                GL.Begin(PrimitiveType.Quads);
-                GL.Color3(Color.White);
-                GL.TexCoord2(0f, 0f);
-                GL.Vertex2(0, 0);
-
-                GL.TexCoord2(0f, 1f);
-                GL.Vertex2(0, Height);
-
-
-                GL.TexCoord2(1f, 1f);
-                GL.Vertex2(Width, Height);
-
-
-                GL.TexCoord2(1f, 0f);
-                GL.Vertex2(Width, 0);
-
-                GL.End();
-
-                GL.Disable(EnableCap.Texture2D);
+                RenderFrame(loffset);
+                Load2DTexture();
+                LoadedLayerIndex = loffset;
             }
+
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+            GL.Enable(EnableCap.Texture2D);
+            GL.BindTexture(TextureTarget.Texture2D, VBOtexture);
+            GL.Begin(PrimitiveType.Quads);
+            GL.Color3(Color.White);
+            GL.TexCoord2(0f, 0f);
+            GL.Vertex2(0, 0);
+
+            GL.TexCoord2(0f, 1f);
+            GL.Vertex2(0, height);
+
+
+            GL.TexCoord2(1f, 1f);
+            GL.Vertex2(width, height);
+
+
+            GL.TexCoord2(1f, 0f);
+            GL.Vertex2(width, 0);
+
+            GL.End();
+
+            GL.Disable(EnableCap.Texture2D);
         }
         
+
         public void DropTexture()
         {
             LoadedLayerIndex = -1;
         }
 
-        public void Explore(int index)
+
+        public void Explore(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
         {
-            SetDrawMode(DrawMode);
-            switch (DrawMode)
-            {
-                case DRAWMODE.Texture:
-                    {
-                        DrawTexture(index);
-                    };
-                    break;
-                case DRAWMODE.Quads:
-                    {
-                        DrawQuads(index);
-                    };
-                    break;
-                case DRAWMODE.QuadStrip:
-                    {
-                        DrawQuadStrip(index);
-                    };
-                    break;
-            }
-        }
-
-
-        public bool SetDrawMode(DRAWMODE Mode)
-        {
-            switch (Mode)
-            {
-                case DRAWMODE.Texture:
-                    {
-                        DrawMode = DRAWMODE.Texture;
-                    };
-                    break;
-                case DRAWMODE.Quads:
-                    {
-                        DrawMode = DRAWMODE.Quads;
-                    };
-                    break;
-                case DRAWMODE.QuadStrip:
-                    {
-                        DrawMode = DRAWMODE.QuadStrip;
-                    };
-                    break;
-                case DRAWMODE.NotInitialized:
-                    {
-                        return SetStatus(STATUS.DrawModeNotInitialized);
-                    };
-
-                default:
-                    {
-                        return SetStatus(STATUS.DrawModeFailed);
-                    };
-            }
-
-            return SetStatus(STATUS.OK);
+            DrawTexture(sgn_o, slope_o, offset_o, sgn_i, slope_i, offset_i);
         }
     }
 }

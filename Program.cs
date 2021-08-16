@@ -11,8 +11,8 @@ using OpenTK.Graphics.OpenGL;
 
 static class Globals
 {
-    public static GLControl[] GLView;
-    public static EyeAssistant.VolumeExplorer[] Explorer;
+    public static GLControl GLView;
+    public static EyeAssistant.VolumeExplorer Explorer;
 }
 
 namespace EyeAssistant

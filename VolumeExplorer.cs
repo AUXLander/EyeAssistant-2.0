@@ -23,14 +23,31 @@ namespace EyeAssistant
         private int VWidth;
         private int VHeight;
 
-        private ushort Min;
-        private ushort Max;
+        private short Min;
+        private short Max;
 
-        public ushort OutputMin;
-        public ushort OutputMax;
+        private short MinL3;
+        private short MaxL3;
 
-        private ushort[] mData;
+        private int cellSize;
+
+        private int drvVsign_I = 0;
+        private int drvSlope_I = 0;
+        private int drvOffset_I = 0;
+
+        private int drvVsign_Q = 0;
+        private int drvSlope_Q = 0;
+        private int drvOffset_Q = 0;
+
+        private int drvOffset;
+
+        public short layer = 2;
+
+        public bool drawGrid = true;
+
+        private short[] mData;
         private double ColorStep;
+        private double ColorStepL3;
 
         private bool hasDisplayedStatus = false;
 
@@ -76,25 +93,49 @@ namespace EyeAssistant
                     height = reader.ReadUInt16();
                     width = reader.ReadUInt16();
 
-                    int length = height * width * (sgn * sgn) * (slope  * slope) * (offset * offset);
+                    cellSize = reader.ReadUInt16();
 
-                    Min = ushort.MaxValue;
-                    Max = ushort.MinValue;
+                    if (cellSize > 3)
+                    {
+                        MessageBox.Show("Unsupported legacy detected!");
 
-                    mData = new ushort[length];
+                        filepath = null;
+
+                        reader.Close();
+                        stream.Close();
+
+                        return false;
+                    }
+
+                    int length = cellSize * height * width * (sgn * sgn) * (slope  * slope) * (offset * offset);
+
+                    Min = short.MaxValue;
+                    Max = short.MinValue;
+
+                    mData = new short[length];
 
                     for (uint i = 0; i < length; i++)
                     {
-                        mData[i] = reader.ReadUInt16();
-
-                        Min = mData[i] < Min ? mData[i] : Min;
-                        Max = mData[i] > Max ? mData[i] : Max;
+                        mData[i] = reader.ReadInt16();
                     }
 
-                    OutputMin = Min;
-                    OutputMax = Max;
+                    MinL3 = short.MaxValue;
+                    MaxL3 = short.MinValue;
+
+                    for (uint i = 0; i < length; i += 3)
+                    {
+                        Min = Math.Min(mData[i + 0], Min);
+                        Max = Math.Max(mData[i + 0], Max);
+
+                        Min = Math.Min(mData[i + 1], Min);
+                        Max = Math.Max(mData[i + 1], Max);
+
+                        MinL3 = Math.Min(MinL3, mData[i + 2]);
+                        MaxL3 = Math.Max(MaxL3, mData[i + 2]);
+                    }
 
                     ColorStep = 255.0 / (Max - Min);
+                    ColorStepL3 = 255.0 / (MaxL3 - MinL3);
 
                     reader.Close();
                     stream.Close();
@@ -109,24 +150,41 @@ namespace EyeAssistant
         }
 
 
-        public (ushort, ushort) GetBounds(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
+        public (short, short) GetBounds(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
         {
             int loffset = LOffset(sgn_o, slope_o, offset_o, sgn_i, slope_i, offset_i);
-            ushort min = ushort.MaxValue;
-            ushort max = ushort.MinValue;
+            short min = short.MaxValue;
+            short max = short.MinValue;
 
             for (int xoffset, x = 0; x < width; x++)
             {
-                xoffset = loffset + x * height;
+                xoffset = loffset + x * height * cellSize;
 
                 for (int y = 0; y < height; y++)
                 {
-                    min = Math.Min(min, mData[xoffset + y]);
-                    max = Math.Max(max, mData[xoffset + y]);
+                    min = Math.Min(min, mData[xoffset + y * cellSize + layer]);
+                    max = Math.Max(max, mData[xoffset + y * cellSize + layer]);
                 }
             }
 
             return (min, max);
+        }
+
+        public short GetPoint(int vx, int vy)
+        {
+            int x = (short)Math.Round((width - 1) * vx / (float)VWidth) % width;
+            int y = (short)Math.Round((height - 1) * vy / (float)VHeight) % height;
+
+            if (LoadedLayerIndex >= 0)
+            {
+                int loffset = (int)LoadedLayerIndex;
+
+                int xoffset = loffset + x * height * cellSize;
+
+                return mData[xoffset + y * cellSize + layer];
+            }
+
+            return -1;
         }
 
 
@@ -140,14 +198,297 @@ namespace EyeAssistant
         }
 
 
-        public Color TColor(ushort value)
+        public void set_drv_slope_offs(bool component, int vsign, int slope, int offset)
         {
+            if (component == true) // I
+            {
+                drvVsign_I = vsign;
+                drvSlope_I = slope;
+                drvOffset_I = offset;
+            }
+            else // Q
+            {
+                drvVsign_Q = vsign;
+                drvSlope_Q = slope;
+                drvOffset_Q = offset;
+            }
+
+            drvOffset = LOffset(drvVsign_I, drvSlope_I, drvOffset_I, drvVsign_Q, drvSlope_Q, drvOffset_Q);
+        }
+
+
+        public (int, int, int) FindSlopeC4(bool component)
+        {
+            int x = 64; // dco i
+            int y = 64; // dco q
+
+            Func<int, bool> setDco = (v) =>
+            {
+                if (component == true)
+                {
+                    y = 64;
+                    x = v;
+
+                    //m_trx->write(TRx::Regmap::tx_bb_q_dco, 64);
+                    //m_trx->write(TRx::Regmap::tx_bb_i_dco, v);
+                }
+                else
+                {
+                    x = 64;
+                    y = v;
+
+                    //m_trx->write(TRx::Regmap::tx_bb_i_dco, 64);
+                    //m_trx->write(TRx::Regmap::tx_bb_q_dco, v);
+                }
+
+                return true;
+            };
+
+            Func<bool, short> measureDiff = (_component) =>
+            {
+                int xoffset = drvOffset + (x / 8) * height * cellSize;
+
+                if (_component == true) // I
+                {
+                    return mData[xoffset + (y / 8) * cellSize + 0];
+                }
+                else
+                {
+                    return mData[xoffset + (y / 8) * cellSize + 1];
+                }
+            };
+
+            short bestDiff = 10000;
+
+            int bestVsign = 0;
+            int bestSlope = 0;
+            int bestOffset = 0;
+
+            bool settings_found = false;
+
+            short leftDiff, rightDiff, midleDiff;
+
+            short measurement_value;
+
+            for (int slope = 0; (slope < 4) && (settings_found == false); slope++)
+            {
+                for (int sgn = 0; sgn < 2; sgn++)
+                {
+                    for (int offset = 0; offset < 4; offset++)
+                    {
+                        set_drv_slope_offs(component, sgn, slope, offset);
+
+                        setDco(13);
+                        measurement_value = measureDiff(component);
+
+                        leftDiff = measurement_value;
+
+                        setDco(0x40);
+                        measurement_value = measureDiff(component);
+
+                        midleDiff = Math.Abs(measurement_value);
+
+                        setDco(115);
+                        measurement_value = measureDiff(component);
+
+                        rightDiff = measurement_value;
+
+                        Console.WriteLine("Difference at dco (13): " + leftDiff.ToString() + " & dco (115): " + rightDiff.ToString() + '\n');
+
+                        if (Math.Sign(leftDiff) != Math.Sign(rightDiff))
+                        {
+                            if (midleDiff < bestDiff)
+                            {
+                                bestDiff = midleDiff;
+
+                                Console.WriteLine("Lower difference: " + bestDiff.ToString() + '\n');
+
+                                bestVsign = sgn;
+                                bestSlope = slope;
+                                bestOffset = offset;
+
+                                settings_found = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (settings_found == false)
+            {
+                Console.WriteLine("No TX DCO settings found!");
+            }
+
+            Console.WriteLine("best slope: " + bestSlope.ToString());
+            Console.WriteLine("best vsign: " + bestVsign.ToString());
+            Console.WriteLine("best offset: " + bestOffset.ToString());
+
+            return (bestSlope, bestVsign, bestOffset);
+        }
+
+
+        public (int, int, int) FindSlopeC5(bool component) {
+
+            int x = 64;
+            int y = 64;
+
+            Func<short> measureError = () =>
+            {
+                int xoffset = drvOffset + (x / 8) * height * cellSize;
+
+                return mData[xoffset + (y / 8) * cellSize + 2];
+            };
+
+            double bestError = 1e6;
+
+            int bestVsign = 0;
+            int bestSlope = 0;
+            int bestOffset = 0;
+
+            double error = 1e6;
+
+            bool sub_setting_found = false;
+
+	        for (int slope = 3; (slope >= 0) && (sub_setting_found == false); slope--)
+	        {
+		        for (int vsign = 0; vsign< 2; vsign++)
+		        {
+			        for (int offset = 0; offset< 4; offset++)
+			        {
+				        set_drv_slope_offs(component, vsign, slope, offset);
+
+                        error = (double)measureError();
+
+				        if (error < bestError)
+				        {
+                            bestError = error;
+                            bestVsign = vsign;
+                            bestSlope = slope;
+                            bestOffset = offset;
+
+					        sub_setting_found = true;
+                        }
+                    }
+		        }
+
+		        if (sub_setting_found == true)
+                {
+                    double[] around = new double[5];
+
+                    int index = 0;
+                    for (int dcoI = 32; dcoI <= 96; dcoI += 64)
+                    {
+                        x = dcoI;
+
+                        for (int dcoQ = 32; dcoQ <= 96; dcoQ += 64)
+                        {
+                            y = dcoQ;
+
+                            around[index] = measureError();
+
+                            index++;
+                        }
+                    }
+
+                    x = 64;
+                    y = 64;
+
+                    around[4] = measureError();
+
+                    int[] success_stages = { -1, -1 };
+
+                    for (int in_slope = slope - 1; (in_slope >= 0) && ((success_stages[0] == -1) || (success_stages[1] == -1)); in_slope--)
+                    {
+                        int stage_index = (slope - 1) - in_slope;
+
+                        set_drv_slope_offs(component, bestVsign, in_slope, bestOffset);
+
+                        index = 0;
+                        double err = 1e6;
+
+                        for (int dcoI = 32; dcoI <= 96; dcoI += 64)
+                        {
+                            x = dcoI;
+
+                            for (int dcoQ = 32; dcoQ <= 96; dcoQ += 64)
+                            {
+                                y = dcoQ;
+
+                                err = measureError();
+
+                                if (err <= (around[index] + 10))
+                                {
+                                    success_stages[stage_index]++;
+                                }
+                            }
+                        }
+
+                        x = 64;
+                        y = 64;
+
+                        err = measureError();
+
+                        if (err <= (around[4] + 10))
+                        {
+                            success_stages[stage_index]++;
+                        }
+
+                        if (success_stages[stage_index] >= 2)
+                        {
+                            bestSlope = in_slope;
+                        }
+                    }
+
+                    if ((success_stages[0] == -1) && (success_stages[1] == -1))
+                    {
+                        sub_setting_found = false;
+                    }
+                }
+	        }
+
+	        if (sub_setting_found == false)
+            {
+                Console.WriteLine("No TX DCO settings found!");
+            }
+
+            Console.WriteLine("best slope: " + bestSlope.ToString());
+            Console.WriteLine("best vsign: " + bestVsign.ToString());
+            Console.WriteLine("best offset: " + bestOffset.ToString());
+
+            return (bestSlope, bestVsign, bestOffset);
+        }
+
+
+        public Color TColor(short value)
+        {
+            double step = 0;
+            short min = 0, max = 0;
+
+            switch(layer)
+            {
+                case 0:
+                case 1:
+                    min = Min;
+                    max = Max;
+
+                    step = ColorStep;
+
+                    break;
+                case 2:
+                    min = MinL3;
+                    max = MaxL3;
+
+                    step = ColorStepL3;
+
+                    break;
+            }
+
             byte color = 0;
-            byte alpha = (Math.Min(OutputMax, Max) < value || value < Math.Max(OutputMin, Min)) ? (byte)0 : (byte)255;
+            byte alpha = ((max < value) || (value < min)) ? (byte)0 : (byte)255;
 
             if (alpha > 0)
             {
-                color = Math.Max((byte)0, (byte)Math.Min((int)255, (int)((value - Min) * ColorStep)));
+                color = Math.Max((byte)0, (byte)Math.Min((int)255, (int)((value - min) * step)));
             }
 
             return Color.FromArgb(alpha, color, color, color);
@@ -192,15 +533,14 @@ namespace EyeAssistant
             string str = e.ToString();
         }
 
-
         public int LOffset(int sgn_o, int slope_o, int offset_o, int sgn_i, int slope_i, int offset_i)
         {
-            return sgn_o        * ((sgn) * (slope * slope) * (offset * offset) * height * width)
-                   + slope_o    * (sgn * slope * (offset * offset) * height * width)
-                   + offset_o   * (sgn * slope * offset * height * width)
-                   + sgn_i      * (slope * offset * height * width)
-                   + slope_i    * (offset * height * width)
-                   + offset_i   * (height * width);
+            return sgn_o        * ((sgn) * (slope * slope) * (offset * offset) * height * width) * cellSize
+                   + slope_o    * (sgn * slope * (offset * offset) * height * width) * cellSize
+                   + offset_o   * (sgn * slope * offset * height * width) * cellSize
+                   + sgn_i      * (slope * offset * height * width) * cellSize
+                   + slope_i    * (offset * height * width) * cellSize
+                   + offset_i   * (height * width) * cellSize;
         }
 
 
@@ -210,11 +550,11 @@ namespace EyeAssistant
 
             for (int xoffset, x = 0; x < width; x++)
             {
-                xoffset = loffset + x * height;
+                xoffset = loffset + x * height * cellSize;
 
                 for (int y = 0; y < height; y++)
                 {
-                    original.SetPixel(x, y, TColor(mData[xoffset + y]));
+                    original.SetPixel(x, height - 1 - y, TColor(mData[xoffset + y * cellSize + layer]));
                 }
             }
 
@@ -224,7 +564,64 @@ namespace EyeAssistant
             }
 
             texture = new Bitmap(original, new Size(VWidth, VHeight));
+
+            if (drawGrid == true)
+            {
+                for (float x = 0; x < (VWidth + 1); x += (float)VWidth / 15.0f)
+                {
+                    for (float y = 0; y < (VHeight + 1); y += (float)VHeight / 15.0f)
+                    {
+                        int xx = Math.Min(Math.Max(0, (int)x), VWidth - 1);
+                        int yy = Math.Min(Math.Max(0, (int)y), VHeight - 1);
+
+                        if ((x == 64f) && (y == 64f))
+                        {
+                            texture.SetPixel(xx, yy, Color.Red);
+                        }
+                        else
+                        {
+                            texture.SetPixel(xx, yy, Color.GreenYellow);
+                        }
+                    }
+                }
+            }
+
             original.Dispose();
+
+            if (layer < 2)
+            {
+                List<PointF> points = new List<PointF>();
+
+                for (int xoffset, x = 0; x < width; x++)
+                {
+                    xoffset = loffset + x * height * cellSize;
+
+                    for (int y = 0; y < height; y++)
+                    {
+                        short v = mData[xoffset + y * cellSize + layer];
+
+                        if (Math.Abs(v) < 100)
+                        {
+                            float xx = (VWidth / width) * x;
+                            float yy = VHeight - 1 - (VHeight / height) * y;
+
+                            points.Add(new PointF(xx, yy));
+                        }
+                    }
+                }
+
+                if (points.Count > 2)
+                {
+                    using (Graphics gr = Graphics.FromImage(texture))
+                    {
+                        Pen pen = new Pen(Color.Red, 3);
+
+                        gr.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                        gr.DrawBeziers(pen, points.Take(points.Count - ((points.Count - 1) % 3)).ToArray());
+                    }
+                }
+            }
         }
 
 
